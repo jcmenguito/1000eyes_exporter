@@ -13,6 +13,8 @@ const (
 	apiURLTestBGB         = "https://api.thousandeyes.com/v6/net/bgp-metrics/%d.json"
 	apiURLTestHTTP        = "https://api.thousandeyes.com/v6/web/http-server/%d.json"
 	apiURLTestHTTPMetrics = "https://api.thousandeyes.com/v6/net/metrics/%d.json"
+	// Added
+	apiURLNetworkPathVisualizationResults = "https://api.thousandeyes.com/v6/net/path-vis/%d.json"
 )
 
 // ThousandeyesRequest the request struct
@@ -27,10 +29,10 @@ type Request struct {
 type ThousandAlerts struct {
 	From  string `json:"from"`
 	Alert []struct {
-		Active    int    `json:"active"`
-		AlertID   int    `json:"alertId"`
-		DateEnd   string `json:"dateEnd,omitempty"`
-		DateStart string `json:"dateStart"`
+		Active    int        `json:"active"`
+		AlertID   int        `json:"alertId"`
+		DateEnd   string     `json:"dateEnd,omitempty"`
+		DateStart string     `json:"dateStart"`
 		Monitors  []struct { //array of monitors where the alert has at some point been active since the point that the alert was triggered. Only shown on BGP alerts.
 			Active         int    `json:"active"`
 			MetricsAtStart string `json:"metricsAtStart"`
@@ -123,6 +125,28 @@ type HTTPTestMetricResults struct {
 	} `json:"net"`
 }
 
+// Test Type agent-to-agent
+// Network - Path Visualization
+// https://developer.thousandeyes.com/v6/test_data/#/path-vis
+type NetworkPathVisualizationResults struct {
+	Net struct {
+		Test    ThousandTest `json:"test"`
+		PathVis []struct {
+			AgentName string `json:"agentName"`
+			AgentID   int    `json:"agentId"`
+			CountryID string `json:"countryId"`
+			ServerIp  string `json:"serverIp"`
+			SourceIp  string `json:"sourceIp"`
+			EndPoints []struct {
+				NumberOfHops int    `json:"numberOfHops"`
+				IpAddress    string `json:"ipAddress"`
+				ResponseTime int    `json:"responseTime"`
+				PathId       string `json:"pathId"`
+			} `json:"endPoints"`
+		} `json:"pathVis"`
+	} `json:"net"`
+}
+
 // HTTPTestWebServerResults HTTP Test details on Server Response
 type HTTPTestWebServerResults struct {
 	Web struct {
@@ -155,7 +179,7 @@ func thousandEyesDateTime() string {
 	return string(f)
 }
 
-func (t *Collector) GetAlerts() (ThousandAlerts, bool, bool ) {
+func (t *Collector) GetAlerts() (ThousandAlerts, bool, bool) {
 
 	r := Request{
 		URL:            apiURLAlerts,
@@ -167,7 +191,12 @@ func (t *Collector) GetAlerts() (ThousandAlerts, bool, bool ) {
 	return *r.ResponseObject.(*ThousandAlerts), bHitAPILimit, bError
 }
 
-func (t *Collector) GetTests() (bgpMs []BGPTestResults, httpMs []HTTPTestMetricResults, httpWs []HTTPTestWebServerResults, bHitAPILimit, bError bool) {
+func (t *Collector) GetTests() (bgpMs []BGPTestResults,
+	httpMs []HTTPTestMetricResults,
+	httpWs []HTTPTestWebServerResults,
+	netPathVis []NetworkPathVisualizationResults,
+	bHitAPILimit,
+	bError bool) {
 
 	rTests := Request{
 		URL:            apiURLTests,
@@ -175,7 +204,7 @@ func (t *Collector) GetTests() (bgpMs []BGPTestResults, httpMs []HTTPTestMetricR
 	}
 	bHitAPILimit, bError = CallSingle(t.Token, t.User, t.IsBasicAuth, &rTests)
 	if rTests.Error != nil {
-		return bgpMs, httpMs, httpWs, bHitAPILimit, bError
+		return bgpMs, httpMs, httpWs, netPathVis, bHitAPILimit, bError
 	}
 
 	te := rTests.ResponseObject.(*ThousandTests)
@@ -185,6 +214,7 @@ func (t *Collector) GetTests() (bgpMs []BGPTestResults, httpMs []HTTPTestMetricR
 	log.Println(fmt.Sprintf("INFO: ThousandEyes Test Count: %d", len(te.Tests)))
 
 	for i := range te.Tests {
+		log.Println(fmt.Sprintf("INFO: Test list: %s %d", te.Tests[i].Type, te.Tests[i].TestID))
 		switch te.Tests[i].Type {
 		case "http-server":
 
@@ -210,8 +240,35 @@ func (t *Collector) GetTests() (bgpMs []BGPTestResults, httpMs []HTTPTestMetricR
 				})
 			}
 
+		case "agent-to-agent":
+			if t.IsCollectNetPathViz {
+				testRequests = append(testRequests, Request{
+					URL:            fmt.Sprintf(apiURLNetworkPathVisualizationResults, te.Tests[i].TestID),
+					ResponseObject: new(NetworkPathVisualizationResults),
+				})
+				//log.Println(fmt.Sprintf("INFO: testResults [%s]",testRequests ))
+			}
+
+		case "agent-to-server":
+			break
+
+		case "web-transactions":
+			break
+
+		case "dns-server":
+			break
+
+		case "dns-trace":
+			break
+
+		case "page-load":
+			break
+
+		case "voice":
+			break
+
 		default:
-			log.Println(fmt.Sprintf("ERROR: Not a handled test type: %s. Bug. Fix Code.", te.Tests[i].Type))
+			log.Println(fmt.Sprintf("WARN: Not a handled test type: %s. Bug. Fix Code.", te.Tests[i].Type))
 		}
 	}
 
@@ -223,16 +280,18 @@ func (t *Collector) GetTests() (bgpMs []BGPTestResults, httpMs []HTTPTestMetricR
 		//switch v:=o.ResponseObject.(type) {
 		//v := reflect.TypeOf(o.ResponseObject)
 		switch o.ResponseObject.(type) {
-			case *BGPTestResults:
-				bgpMs = append(bgpMs,*testRequests[c].ResponseObject.(*BGPTestResults))
-			case *HTTPTestMetricResults:
-				httpMs = append(httpMs,*testRequests[c].ResponseObject.(*HTTPTestMetricResults))
-			case *HTTPTestWebServerResults:
-				httpWs = append(httpWs,*testRequests[c].ResponseObject.(*HTTPTestWebServerResults))
-			default:
-				log.Println(fmt.Sprintf("ERROR: Not a handled test type %s (%d of %d). Bug. Fix Code.", reflect.TypeOf(o.ResponseObject), c, len(testRequests)))
+		case *BGPTestResults:
+			bgpMs = append(bgpMs, *testRequests[c].ResponseObject.(*BGPTestResults))
+		case *HTTPTestMetricResults:
+			httpMs = append(httpMs, *testRequests[c].ResponseObject.(*HTTPTestMetricResults))
+		case *HTTPTestWebServerResults:
+			httpWs = append(httpWs, *testRequests[c].ResponseObject.(*HTTPTestWebServerResults))
+		case *NetworkPathVisualizationResults:
+			netPathVis = append(netPathVis, *testRequests[c].ResponseObject.(*NetworkPathVisualizationResults))
+		default:
+			log.Println(fmt.Sprintf("ERROR: Not a handled test type %s (%d of %d). Bug. Fix Code.", reflect.TypeOf(o.ResponseObject), c, len(testRequests)))
 		}
 	}
 
-	return bgpMs, httpMs, httpWs, bHitAPILimit, bError
+	return bgpMs, httpMs, httpWs, netPathVis, bHitAPILimit, bError
 }

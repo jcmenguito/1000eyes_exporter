@@ -11,7 +11,6 @@ import (
 	"sync"
 )
 
-
 // CallSingle is a single URL call
 // it returns true, if the API Rate Limit was hit
 // the error & result object itself are modified in the Request struct
@@ -24,7 +23,7 @@ func CallSingle(token string, user string, isBasicAuth bool, request *Request) (
 	req, err := http.NewRequest("GET", request.URL, nil)
 	if isBasicAuth {
 		//bt, _ := base64.StdEncoding.DecodeString(token)
-		req.SetBasicAuth(user,token)
+		req.SetBasicAuth(user, token)
 		//req.Header.Add("Authorization", "Basic "+string(bt) )
 
 	} else {
@@ -94,7 +93,7 @@ func CallParallel(token string, user string, isBasicAuth bool, requests []Reques
 	var m sync.Mutex
 
 	httpChan := make(chan Request, len(requests))
-	bHitRateLimit = false;
+	bHitRateLimit = false
 
 	for _, request := range requests {
 
