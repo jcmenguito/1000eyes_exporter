@@ -3,12 +3,32 @@
 Prometheus exporter ot export test metrics and alerts from [ThousandEyes](https://www.thousandeyes.com/).
 The port 9350 was chosen because someone already [reserved](https://github.com/prometheus/prometheus/wiki/Default-port-allocations) it for a ThousandEyes exporter that was supposed to be coming soon but has not been published up to November 2018.
 
-# Environment & Arguments
+## Building and Installing
+###Build Pre-Req:
+- Golang installed with `$GOBIN` and `$GOPATH` set
+- [Gox](https://github.com/mitchellh/gox) -- Uses Gox for cross-platform builds
+```shell
+$ go get github.com/mitchellh/gox
+...
+$ gox -h
+...
+```
 
-## Environment Settings
+Makefile Targets:
+
+| Target | Description|
+|---|---|
+|deps | Download and Install any missing dependecies|
+|build  | Install missing dependencies. Builds binaries for linux and darwin in ./dist |
+|tidy |                    Verifies and downloads all required dependencies|
+|fmt   |                   Runs gofmt on all source files|
+|clean |                   Removes build, dist and report dirs|
+|debug  |                  Print make env information|
+
+# Environment Settings
 Mandatory 
 
-- `ENV VAR "THOUSANDEYES_TOKEN"` 
+- `ENV VAR " THOUSANDEYES_BEARER_TOKEN"` 
 
 or 
 
@@ -17,36 +37,14 @@ or
 
 set to a valid ThousandEyes token to be able to query.
 
-## Arguments
-
+# Program Arguments
 
 - `-GetBGP=true [true|false (default)]` if you want BGP test data collected
 - `-GetHTTP=true [true|false (default)]` if you want HTTP request test data collected (false is default if not set)
 - `-GetHttpMetrics=true [true|false (default)]` if you want HTTP routing test data collected (false is default if not set)
+- `-GetNetPathViz=true [true|false (default)]` if you want Network Visualization Tests (false is default if not set)
 
-    HINT: please be aware of the API request limit per minute .. if you have many tests and collect all details it's pretty sure that you're going to it. 
+<p>HINT: please be aware of the API request limit per minute .. if you have many tests and collect all details it's 
+pretty sure that you're going to it.</p> 
 
 - Just for debugging purpose: `-RetrospectionPeriod` You can set the period of time it queries into the past, e.g. `-RetrospectionPeriod 12h`. Large values do not make much sense, because we do not get data about when they started or ended. Just that they existed.
-
-# Docker
-
-1. make build
-
-2. Run
--  _Normal Run to get actual alerts firing:_
-
-    - Bearer: 
-        
-        `docker run --rm -p 9350:9350 -e "THOUSANDEYES_BASIC_AUTH_TOKEN=<secret_api_bearer_token>" $(IMAGE):$(VERSION)`
-    
-    - Basic Auth: 
-    
-        `docker run --rm -p 9350:9350 -e "THOUSANDEYES_BASIC_AUTH_USER=<secret_api_user>" -e "THOUSANDEYES_BASIC_AUTH_TOKEN=<secret_api_basic_auth_token>" $(IMAGE):$(VERSION)`
-
--  _Run to get actual alerts firing and Test Results:_
-
-    `docker run --rm -p 9350:9350 -e "THOUSANDEYES_TOKEN=<secret_api_bearer_token>" $(IMAGE):$(VERSION) -GetBGP=true -GetHTTP=true`
-
-- _Run getting alerts from the past - makes only sense for Check/Debug purpose:_
-
-    `docker run --rm -p 9350:9350 -e "THOUSANDEYES_TOKEN=  secret_api_bearer_token " $(IMAGE):$(VERSION) -RetrospectionPeriod=12h`
